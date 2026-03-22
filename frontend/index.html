@@ -67,6 +67,27 @@
                 <div id="match-result" class="match-result">
                     <div class="match-status">Waiting for face...</div>
                 </div>
+                
+                <!-- AI Description Section -->
+                <div class="ai-description-section">
+                    <div class="ai-toggle-container">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="ai-description-toggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">Enable AI Description</span>
+                    </div>
+                    <div id="ai-status" class="ai-status hidden"></div>
+                    <div id="ai-description-container" class="ai-description-container hidden">
+                        <div class="ai-description-header">
+                            <span class="ai-icon">🤖</span>
+                            <span>AI Scene Description</span>
+                        </div>
+                        <div id="ai-description" class="ai-description">
+                            <span class="ai-placeholder">Capturing scene...</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

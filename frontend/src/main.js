@@ -1,9 +1,14 @@
 import * as faceapi from 'face-api.js';
+import { pipeline, env } from '@huggingface/transformers';
+
+// Configure Transformers.js
+env.allowLocalModels = false;
 
 // Configuration
 const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
 const STORAGE_KEY = 'registered_face_descriptor';
 const MATCH_THRESHOLD = 0.6; // Lower = stricter matching
+const VLM_CAPTURE_INTERVAL = 3000; // 3 seconds between frame captures
 
 // State
 let modelsLoaded = false;
@@ -11,6 +16,12 @@ let registerVideo = null;
 let monitorVideo = null;
 let isMonitoring = false;
 let monitorInterval = null;
+
+// VLM State
+let vlmPipeline = null;
+let vlmLoading = false;
+let vlmEnabled = false;
+let vlmCaptureInterval = null;
 
 // Model files to load
 const modelFiles = [
@@ -83,6 +94,173 @@ async function loadModelsWithProgress() {
     progressDetail.textContent = `Error: ${error.message}`;
     progressFill.style.background = 'var(--accent-danger)';
     throw error;
+  }
+}
+
+// ============================================
+// VLM (Vision Language Model) Functions
+// ============================================
+
+function updateAIStatus(message, type = 'loading') {
+  const statusEl = document.getElementById('ai-status');
+  statusEl.textContent = message;
+  statusEl.className = `ai-status ${type}`;
+  statusEl.classList.remove('hidden');
+}
+
+function hideAIStatus() {
+  const statusEl = document.getElementById('ai-status');
+  statusEl.classList.add('hidden');
+}
+
+function showAIDescription(text) {
+  const container = document.getElementById('ai-description-container');
+  const descriptionEl = document.getElementById('ai-description');
+  
+  container.classList.remove('hidden');
+  descriptionEl.innerHTML = text;
+}
+
+async function loadVLM() {
+  if (vlmPipeline || vlmLoading) return;
+  
+  vlmLoading = true;
+  updateAIStatus('Loading AI vision model...', 'loading');
+  
+  try {
+    // Check for WebGPU support
+    const hasWebGPU = 'gpu' in navigator;
+    const device = hasWebGPU ? 'webgpu' : 'wasm';
+    
+    updateAIStatus(`Loading AI model via ${device.toUpperCase()}...`, 'loading');
+    
+    // Use a smaller, well-supported model for image captioning
+    // Xenova/vit-gpt2-image-captioning is reliable and well-tested
+    vlmPipeline = await pipeline(
+      'image-to-text',
+      'Xenova/vit-gpt2-image-captioning',
+      {
+        device: device,
+        dtype: hasWebGPU ? 'fp16' : 'q8',
+        progress_callback: (progress) => {
+          if (progress.status === 'progress' && progress.progress !== undefined) {
+            const percent = Math.round(progress.progress);
+            updateAIStatus(`Loading AI model... ${percent}%`, 'loading');
+          }
+        }
+      }
+    );
+    
+    hideAIStatus();
+    showAIDescription('<span class="ai-placeholder">AI ready. Capturing scene...</span>');
+    
+    vlmLoading = false;
+    
+  } catch (error) {
+    console.error('VLM loading error:', error);
+    vlmLoading = false;
+    
+    // Fallback to WASM if WebGPU fails
+    if (device === 'webgpu') {
+      updateAIStatus('WebGPU failed, trying WASM...', 'loading');
+      try {
+        vlmPipeline = await pipeline(
+          'image-to-text',
+          'Xenova/vit-gpt2-image-captioning',
+          {
+            device: 'wasm',
+            dtype: 'q8',
+            progress_callback: (progress) => {
+              if (progress.status === 'progress' && progress.progress !== undefined) {
+                const percent = Math.round(progress.progress);
+                updateAIStatus(`Loading AI model (WASM)... ${percent}%`, 'loading');
+              }
+            }
+          }
+        );
+        hideAIStatus();
+        showAIDescription('<span class="ai-placeholder">AI ready. Capturing scene...</span>');
+      } catch (fallbackError) {
+        console.error('VLM fallback error:', fallbackError);
+        updateAIStatus('Failed to load AI model. Try refreshing.', 'error');
+        vlmEnabled = false;
+        document.getElementById('ai-description-toggle').checked = false;
+      }
+    } else {
+      updateAIStatus('Failed to load AI model. Try refreshing.', 'error');
+      vlmEnabled = false;
+      document.getElementById('ai-description-toggle').checked = false;
+    }
+  }
+}
+
+function captureVideoFrame(videoElement) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Use a reasonable size for the VLM
+  const maxSize = 384;
+  const scale = Math.min(maxSize / videoElement.videoWidth, maxSize / videoElement.videoHeight, 1);
+  
+  canvas.width = Math.round(videoElement.videoWidth * scale);
+  canvas.height = Math.round(videoElement.videoHeight * scale);
+  
+  ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  
+  // Return as base64 data URL
+  return canvas.toDataURL('image/jpeg', 0.8);
+}
+
+async function generateDescription() {
+  if (!vlmPipeline || !monitorVideo || !vlmEnabled) return;
+  
+  try {
+    // Capture frame from video
+    const imageData = captureVideoFrame(monitorVideo);
+    
+    // Generate caption
+    const result = await vlmPipeline(imageData);
+    
+    // Extract the generated text
+    let description = 'Unable to describe scene.';
+    if (result && Array.isArray(result) && result[0]?.generated_text) {
+      description = result[0].generated_text;
+    } else if (result?.generated_text) {
+      description = result.generated_text;
+    }
+    
+    // Capitalize first letter and add period if missing
+    description = description.charAt(0).toUpperCase() + description.slice(1);
+    if (!description.endsWith('.') && !description.endsWith('!') && !description.endsWith('?')) {
+      description += '.';
+    }
+    
+    showAIDescription(description);
+    
+  } catch (error) {
+    console.error('VLM inference error:', error);
+    showAIDescription('<span class="ai-placeholder">Error processing frame. Retrying...</span>');
+  }
+}
+
+function startVLMCapture() {
+  if (vlmCaptureInterval) return;
+  
+  // Generate initial description after a short delay
+  setTimeout(() => {
+    if (vlmEnabled) generateDescription();
+  }, 500);
+  
+  // Set up interval for periodic captures
+  vlmCaptureInterval = setInterval(() => {
+    if (vlmEnabled) generateDescription();
+  }, VLM_CAPTURE_INTERVAL);
+}
+
+function stopVLMCapture() {
+  if (vlmCaptureInterval) {
+    clearInterval(vlmCaptureInterval);
+    vlmCaptureInterval = null;
   }
 }
 
@@ -252,6 +430,7 @@ async function initMonitorPage() {
   monitorVideo = document.getElementById('monitor-video');
   const monitorCanvas = document.getElementById('monitor-canvas');
   const matchResult = document.getElementById('match-result');
+  const aiToggle = document.getElementById('ai-description-toggle');
   
   // Check if face is registered
   if (!hasRegisteredFace()) {
@@ -301,6 +480,26 @@ async function initMonitorPage() {
       }
     }, 300);
     
+    // Setup AI toggle handler
+    aiToggle.addEventListener('change', async (e) => {
+      vlmEnabled = e.target.checked;
+      
+      if (vlmEnabled) {
+        // Load VLM if not loaded
+        if (!vlmPipeline) {
+          await loadVLM();
+        }
+        
+        if (vlmPipeline) {
+          startVLMCapture();
+        }
+      } else {
+        stopVLMCapture();
+        document.getElementById('ai-description-container').classList.add('hidden');
+        hideAIStatus();
+      }
+    });
+    
   } catch (error) {
     matchResult.innerHTML = `
       <div class="match-status" style="color: var(--accent-danger);">Camera Error</div>
@@ -315,6 +514,7 @@ function stopMonitorPage() {
     clearInterval(monitorInterval);
     monitorInterval = null;
   }
+  stopVLMCapture();
   stopCamera(monitorVideo);
 }
 
