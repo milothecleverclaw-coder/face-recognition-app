@@ -125,31 +125,39 @@ async function loadVLM() {
   if (vlmPipeline || vlmLoading) return;
   
   vlmLoading = true;
-  updateAIStatus('Loading AI vision model...', 'loading');
+  updateAIStatus('Initializing AI...', 'loading');
   
   try {
-    // Check for WebGPU support
-    const hasWebGPU = 'gpu' in navigator;
-    const device = hasWebGPU ? 'webgpu' : 'wasm';
+    // Skip WebGPU - too unreliable, use WASM directly
+    updateAIStatus('Loading AI model (WASM)...', 'loading');
     
-    updateAIStatus(`Loading AI model via ${device.toUpperCase()}...`, 'loading');
+    // Add timeout wrapper
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Model load timeout (30s)')), 30000);
+    });
     
-    // Use a smaller, well-supported model for image captioning
-    // Xenova/vit-gpt2-image-captioning is reliable and well-tested
-    vlmPipeline = await pipeline(
+    // Use WASM for reliability
+    const loadPromise = pipeline(
       'image-to-text',
       'Xenova/vit-gpt2-image-captioning',
       {
-        device: device,
-        dtype: hasWebGPU ? 'fp16' : 'q8',
+        device: 'wasm',
         progress_callback: (progress) => {
-          if (progress.status === 'progress' && progress.progress !== undefined) {
-            const percent = Math.round(progress.progress);
-            updateAIStatus(`Loading AI model... ${percent}%`, 'loading');
+          if (progress.status === 'downloading') {
+            const percent = progress.progress ? Math.round(progress.progress) : 0;
+            updateAIStatus(`Downloading model... ${percent}%`, 'loading');
+          } else if (progress.status === 'loading') {
+            updateAIStatus('Initializing model...', 'loading');
           }
         }
       }
     );
+    
+    updateAIStatus('Downloading AI model...', 'loading');
+    vlmPipeline = await Promise.race([loadPromise, timeoutPromise]);
+    
+    updateAIStatus('Model ready!', 'loading');
+    await new Promise(r => setTimeout(r, 500));
     
     hideAIStatus();
     showAIDescription('<span class="ai-placeholder">AI ready. Capturing scene...</span>');
@@ -159,38 +167,10 @@ async function loadVLM() {
   } catch (error) {
     console.error('VLM loading error:', error);
     vlmLoading = false;
+    vlmEnabled = false;
     
-    // Fallback to WASM if WebGPU fails
-    if (device === 'webgpu') {
-      updateAIStatus('WebGPU failed, trying WASM...', 'loading');
-      try {
-        vlmPipeline = await pipeline(
-          'image-to-text',
-          'Xenova/vit-gpt2-image-captioning',
-          {
-            device: 'wasm',
-            dtype: 'q8',
-            progress_callback: (progress) => {
-              if (progress.status === 'progress' && progress.progress !== undefined) {
-                const percent = Math.round(progress.progress);
-                updateAIStatus(`Loading AI model (WASM)... ${percent}%`, 'loading');
-              }
-            }
-          }
-        );
-        hideAIStatus();
-        showAIDescription('<span class="ai-placeholder">AI ready. Capturing scene...</span>');
-      } catch (fallbackError) {
-        console.error('VLM fallback error:', fallbackError);
-        updateAIStatus('Failed to load AI model. Try refreshing.', 'error');
-        vlmEnabled = false;
-        document.getElementById('ai-description-toggle').checked = false;
-      }
-    } else {
-      updateAIStatus('Failed to load AI model. Try refreshing.', 'error');
-      vlmEnabled = false;
-      document.getElementById('ai-description-toggle').checked = false;
-    }
+    updateAIStatus(`AI Error: ${error.message}`, 'error');
+    document.getElementById('ai-description-toggle').checked = false;
   }
 }
 
