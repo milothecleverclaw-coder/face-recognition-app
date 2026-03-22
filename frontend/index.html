@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition App</title>
+    <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Loading Screen -->
+        <div id="loading-screen" class="screen active">
+            <div class="loading-container">
+                <div class="loading-icon">🔄</div>
+                <h2>Loading Face Models</h2>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div id="progress-text" class="progress-text">0%</div>
+                <div id="progress-detail" class="progress-detail">Initializing...</div>
+            </div>
+        </div>
+
+        <!-- Main App Container (hidden until models loaded) -->
+        <div id="main-app" class="hidden">
+            <!-- Navigation -->
+            <nav class="navbar">
+                <a href="/" class="nav-link" data-route="/">Register</a>
+                <a href="/monitor" class="nav-link" data-route="/monitor">Monitor</a>
+            </nav>
+
+            <!-- Register Page -->
+            <div id="register-page" class="page active">
+                <div class="page-header">
+                    <h1>Face Registration</h1>
+                    <p>Position your face in the camera and click Register</p>
+                </div>
+                <div class="camera-container">
+                    <video id="register-video" autoplay muted playsinline></video>
+                    <canvas id="register-canvas"></canvas>
+                    <div id="register-overlay" class="overlay">
+                        <div class="face-guide"></div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button id="register-btn" class="btn btn-primary" disabled>
+                        <span class="btn-icon">📸</span>
+                        Register Face
+                    </button>
+                </div>
+                <div id="register-status" class="status-message"></div>
+            </div>
+
+            <!-- Monitor Page -->
+            <div id="monitor-page" class="page">
+                <div class="page-header">
+                    <h1>Face Monitor</h1>
+                    <p>Live face recognition and matching</p>
+                </div>
+                <div class="camera-container">
+                    <video id="monitor-video" autoplay muted playsinline></video>
+                    <canvas id="monitor-canvas"></canvas>
+                    <div id="monitor-overlay" class="overlay">
+                        <div class="face-guide"></div>
+                    </div>
+                </div>
+                <div id="match-result" class="match-result">
+                    <div class="match-status">Waiting for face...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
