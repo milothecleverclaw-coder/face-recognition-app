@@ -517,3 +517,133 @@ body {
     animation: spin 1s linear infinite;
     vertical-align: middle;
 }
+
+/* Liveness Challenge Display */
+.liveness-challenge {
+    text-align: center;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    border: 2px solid var(--accent-primary);
+    animation: pulse-challenge 2s ease-in-out infinite;
+}
+
+.liveness-challenge.hidden {
+    display: none;
+}
+
+@keyframes pulse-challenge {
+    0%, 100% { 
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+    }
+    50% { 
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+}
+
+.liveness-challenge h3 {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: var(--accent-primary);
+}
+
+.liveness-challenge p {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* Liveness Progress */
+.liveness-progress {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.liveness-progress.hidden {
+    display: none;
+}
+
+.liveness-progress .step {
+    padding: 8px 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 2px solid var(--border-color);
+    color: var(--text-secondary);
+    transition: all 0.3s ease;
+}
+
+.liveness-progress .step.active {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.liveness-progress .step.completed {
+    border-color: var(--accent-success);
+    color: var(--accent-success);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.liveness-progress .step.completed::before {
+    content: "✓ ";
+}
+
+/* Liveness Result */
+.liveness-result {
+    text-align: center;
+    padding: 30px 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.liveness-result.hidden {
+    display: none;
+}
+
+.liveness-result.success {
+    border: 2px solid var(--accent-success);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.liveness-result.failed {
+    border: 2px solid var(--accent-danger);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.result-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.liveness-result.success .result-icon {
+    color: var(--accent-success);
+}
+
+.liveness-result.failed .result-icon {
+    color: var(--accent-danger);
+}
+
+.result-title {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+.liveness-result.success .result-title {
+    color: var(--accent-success);
+}
+
+.liveness-result.failed .result-title {
+    color: var(--accent-danger);
+}
+
+.result-message {
+    font-size: 16px;
+    color: var(--text-secondary);
+}

@@ -23,6 +23,18 @@ let vlmLoading = false;
 let vlmEnabled = false;
 let vlmCaptureInterval = null;
 
+// Liveness State
+let livenessVideo = null;
+let livenessCanvas = null;
+let isLivenessCheck = false;
+let livenessInterval = null;
+let currentChallenge = 0;
+let challenges = [];
+let challengeTimeout = null;
+let blinkCount = 0;
+let lastEAR = 0;
+let eyesWereClosed = false;
+
 // Model files to load
 const modelFiles = [
   { name: 'Tiny Face Detector', files: ['tiny_face_detector_model-weights_manifest.json', 'tiny_face_detector_model-shard1'] },
@@ -242,6 +254,278 @@ function stopVLMCapture() {
     clearInterval(vlmCaptureInterval);
     vlmCaptureInterval = null;
   }
+}
+
+// ============================================
+// Liveness Detection Functions
+// ============================================
+
+// Calculate Eye Aspect Ratio (EAR)
+function getEyeAspectRatio(landmarks, eyeIndices) {
+  // eyeIndices should be [p1, p2, p3, p4, p5, p6]
+  const p1 = landmarks[eyeIndices[0]];
+  const p2 = landmarks[eyeIndices[1]];
+  const p3 = landmarks[eyeIndices[2]];
+  const p4 = landmarks[eyeIndices[3]];
+  const p5 = landmarks[eyeIndices[4]];
+  const p6 = landmarks[eyeIndices[5]];
+  
+  // Vertical distances
+  const v1 = Math.sqrt(Math.pow(p2.x - p6.x, 2) + Math.pow(p2.y - p6.y, 2));
+  const v2 = Math.sqrt(Math.pow(p3.x - p5.x, 2) + Math.pow(p3.y - p5.y, 2));
+  
+  // Horizontal distance
+  const h = Math.sqrt(Math.pow(p1.x - p4.x, 2) + Math.pow(p1.y - p4.y, 2));
+  
+  return (v1 + v2) / (2 * h);
+}
+
+// Check if person is blinking
+function detectBlink(landmarks) {
+  // Left eye: landmarks 36-41
+  const leftEye = [36, 37, 38, 39, 40, 41];
+  // Right eye: landmarks 42-47
+  const rightEye = [42, 43, 44, 45, 46, 47];
+  
+  const leftEAR = getEyeAspectRatio(landmarks, leftEye);
+  const rightEAR = getEyeAspectRatio(landmarks, rightEye);
+  const avgEAR = (leftEAR + rightEAR) / 2;
+  
+  const BLINK_THRESHOLD = 0.2;
+  
+  // Detect blink transition (open -> closed -> open)
+  if (lastEAR > BLINK_THRESHOLD && avgEAR <= BLINK_THRESHOLD) {
+    eyesWereClosed = true;
+  } else if (eyesWereClosed && avgEAR > BLINK_THRESHOLD) {
+    // Blink completed
+    eyesWereClosed = false;
+    lastEAR = avgEAR;
+    return true;
+  }
+  
+  lastEAR = avgEAR;
+  return false;
+}
+
+// Detect head turn
+function detectHeadTurn(landmarks, direction) {
+  // landmarks[30] = nose tip
+  // landmarks[2] = left face edge
+  // landmarks[14] = right face edge
+  const noseX = landmarks[30].x;
+  const leftFace = landmarks[2].x;
+  const rightFace = landmarks[14].x;
+  const faceWidth = rightFace - leftFace;
+  
+  const relativeNoseX = (noseX - leftFace) / faceWidth;
+  
+  // relativeNoseX < 0.4 = turned right
+  // relativeNoseX > 0.6 = turned left
+  // 0.4-0.6 = facing forward
+  
+  if (direction === 'left' && relativeNoseX > 0.6) {
+    return true;
+  } else if (direction === 'right' && relativeNoseX < 0.4) {
+    return true;
+  }
+  
+  return false;
+}
+
+// Detect smile
+function detectSmile(landmarks) {
+  // Mouth landmarks
+  // Upper lip: 62-63
+  // Lower lip: 65-66
+  // Mouth corners: 48, 54
+  
+  const upperLip = landmarks[62];
+  const lowerLip = landmarks[66];
+  const leftCorner = landmarks[48];
+  const rightCorner = landmarks[54];
+  
+  const mouthHeight = Math.sqrt(
+    Math.pow(upperLip.x - lowerLip.x, 2) + Math.pow(upperLip.y - lowerLip.y, 2)
+  );
+  const mouthWidth = Math.sqrt(
+    Math.pow(leftCorner.x - rightCorner.x, 2) + Math.pow(leftCorner.y - rightCorner.y, 2)
+  );
+  
+  const mouthAspectRatio = mouthHeight / mouthWidth;
+  
+  // Mouth aspect ratio > 0.35 indicates smiling
+  return mouthAspectRatio > 0.35;
+}
+
+// Shuffle array
+function shuffleArray(array) {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+// Start liveness check
+async function startLivenessCheck() {
+  const startBtn = document.getElementById('start-liveness-btn');
+  const challengeEl = document.getElementById('liveness-challenge');
+  const progressEl = document.getElementById('liveness-progress');
+  const resultEl = document.getElementById('liveness-result');
+  
+  // Reset state
+  currentChallenge = 0;
+  blinkCount = 0;
+  lastEAR = 0;
+  eyesWereClosed = false;
+  
+  // Generate random challenges
+  const turnDirection = Math.random() > 0.5 ? 'left' : 'right';
+  challenges = shuffleArray([
+    { type: 'blink', title: 'Blink Twice', description: 'Look at the camera and blink two times' },
+    { type: 'turn', title: `Turn ${turnDirection === 'left' ? 'Left' : 'Right'}`, description: `Turn your head to the ${turnDirection}`, direction: turnDirection },
+    { type: 'smile', title: 'Smile', description: 'Give us a natural smile' }
+  ]);
+  
+  // Show UI
+  startBtn.classList.add('hidden');
+  challengeEl.classList.remove('hidden');
+  progressEl.classList.remove('hidden');
+  resultEl.classList.add('hidden');
+  
+  // Reset progress steps
+  progressEl.querySelectorAll('.step').forEach(step => {
+    step.className = 'step';
+  });
+  
+  isLivenessCheck = true;
+  
+  // Start first challenge
+  startNextChallenge();
+}
+
+// Start next challenge
+function startNextChallenge() {
+  if (currentChallenge >= challenges.length) {
+    // All challenges completed
+    livenessSuccess();
+    return;
+  }
+  
+  const challenge = challenges[currentChallenge];
+  const titleEl = document.getElementById('challenge-title');
+  const descEl = document.getElementById('challenge-description');
+  const progressEl = document.getElementById('liveness-progress');
+  
+  // Update UI
+  titleEl.textContent = challenge.title;
+  descEl.textContent = challenge.description;
+  
+  // Update progress
+  progressEl.querySelectorAll('.step').forEach((step, index) => {
+    if (index < currentChallenge) {
+      step.className = 'step completed';
+    } else if (index === currentChallenge) {
+      step.className = 'step active';
+    } else {
+      step.className = 'step';
+    }
+  });
+  
+  // Reset challenge-specific state
+  if (challenge.type === 'blink') {
+    blinkCount = 0;
+  }
+  
+  // Set timeout for challenge (5 seconds)
+  if (challengeTimeout) clearTimeout(challengeTimeout);
+  challengeTimeout = setTimeout(() => {
+    livenessFailed(`Challenge "${challenge.title}" timed out`);
+  }, 5000);
+}
+
+// Check current challenge
+function checkChallenge(landmarks) {
+  if (!isLivenessCheck || currentChallenge >= challenges.length) return;
+  
+  const challenge = challenges[currentChallenge];
+  let success = false;
+  
+  switch (challenge.type) {
+    case 'blink':
+      if (detectBlink(landmarks)) {
+        blinkCount++;
+        if (blinkCount >= 2) {
+          success = true;
+        }
+      }
+      break;
+      
+    case 'turn':
+      if (detectHeadTurn(landmarks, challenge.direction)) {
+        success = true;
+      }
+      break;
+      
+    case 'smile':
+      if (detectSmile(landmarks)) {
+        success = true;
+      }
+      break;
+  }
+  
+  if (success) {
+    clearTimeout(challengeTimeout);
+    currentChallenge++;
+    startNextChallenge();
+  }
+}
+
+// Liveness success
+function livenessSuccess() {
+  isLivenessCheck = false;
+  
+  const challengeEl = document.getElementById('liveness-challenge');
+  const resultEl = document.getElementById('liveness-result');
+  const startBtn = document.getElementById('start-liveness-btn');
+  const progressEl = document.getElementById('liveness-progress');
+  
+  challengeEl.classList.add('hidden');
+  progressEl.classList.add('hidden');
+  resultEl.classList.remove('hidden');
+  resultEl.className = 'liveness-result success';
+  resultEl.innerHTML = `
+    <div class="result-icon">✓</div>
+    <div class="result-title">Liveness Verified</div>
+    <div class="result-message">You are a real person!</div>
+  `;
+  
+  startBtn.textContent = 'Try Again';
+  startBtn.classList.remove('hidden');
+}
+
+// Liveness failed
+function livenessFailed(reason) {
+  isLivenessCheck = false;
+  
+  const challengeEl = document.getElementById('liveness-challenge');
+  const resultEl = document.getElementById('liveness-result');
+  const startBtn = document.getElementById('start-liveness-btn');
+  const progressEl = document.getElementById('liveness-progress');
+  
+  challengeEl.classList.add('hidden');
+  progressEl.classList.add('hidden');
+  resultEl.classList.remove('hidden');
+  resultEl.className = 'liveness-result failed';
+  resultEl.innerHTML = `
+    <div class="result-icon">✗</div>
+    <div class="result-title">Verification Failed</div>
+    <div class="result-message">${reason || 'Please try again'}</div>
+  `;
+  
+  startBtn.textContent = 'Try Again';
+  startBtn.classList.remove('hidden');
 }
 
 // ============================================
@@ -499,6 +783,62 @@ function stopMonitorPage() {
 }
 
 // ============================================
+// Liveness Page Logic
+// ============================================
+
+async function initLivenessPage() {
+  livenessVideo = document.getElementById('liveness-video');
+  livenessCanvas = document.getElementById('liveness-canvas');
+  const startBtn = document.getElementById('start-liveness-btn');
+  
+  try {
+    await startCamera(livenessVideo);
+    
+    // Start live detection preview
+    livenessInterval = setInterval(async () => {
+      const detection = await detectFace(livenessVideo, livenessCanvas);
+      
+      // Check challenge if active
+      if (detection && isLivenessCheck) {
+        const landmarks = detection.landmarks.positions;
+        checkChallenge(landmarks);
+      }
+    }, 100); // Check every 100ms for smoother detection
+    
+    // Setup start button
+    startBtn.addEventListener('click', () => {
+      if (!isLivenessCheck) {
+        startLivenessCheck();
+      }
+    });
+    
+  } catch (error) {
+    const resultEl = document.getElementById('liveness-result');
+    resultEl.classList.remove('hidden');
+    resultEl.className = 'liveness-result failed';
+    resultEl.innerHTML = `
+      <div class="result-icon">✗</div>
+      <div class="result-title">Camera Error</div>
+      <div class="result-message">${error.message}</div>
+    `;
+    startBtn.disabled = true;
+  }
+}
+
+function stopLivenessPage() {
+  isLivenessCheck = false;
+  if (livenessInterval) {
+    clearInterval(livenessInterval);
+    livenessInterval = null;
+  }
+  if (challengeTimeout) {
+    clearTimeout(challengeTimeout);
+    challengeTimeout = null;
+  }
+  stopCamera(livenessVideo);
+}
+
+// ============================================
 // Router
 // ============================================
 
@@ -528,11 +868,15 @@ async function handleRoute() {
   
   // Stop any running monitors
   stopMonitorPage();
+  stopLivenessPage();
   
   // Show appropriate page
   if (route === '/monitor') {
     document.getElementById('monitor-page').classList.add('active');
     await initMonitorPage();
+  } else if (route === '/liveness') {
+    document.getElementById('liveness-page').classList.add('active');
+    await initLivenessPage();
   } else {
     document.getElementById('register-page').classList.add('active');
     await initRegisterPage();

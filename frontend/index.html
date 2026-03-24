@@ -27,6 +27,7 @@
             <nav class="navbar">
                 <a href="/" class="nav-link" data-route="/">Register</a>
                 <a href="/monitor" class="nav-link" data-route="/monitor">Monitor</a>
+                <a href="/liveness" class="nav-link" data-route="/liveness">Liveness</a>
             </nav>
 
             <!-- Register Page -->
@@ -87,6 +88,44 @@
                             <span class="ai-placeholder">Capturing scene...</span>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Liveness Page -->
+            <div id="liveness-page" class="page">
+                <div class="page-header">
+                    <h1>Liveness Verification</h1>
+                    <p>Complete the challenges to verify you're a real person</p>
+                </div>
+                <div class="camera-container">
+                    <video id="liveness-video" autoplay muted playsinline></video>
+                    <canvas id="liveness-canvas"></canvas>
+                    <div id="liveness-overlay" class="overlay">
+                        <div class="face-guide"></div>
+                    </div>
+                </div>
+                
+                <!-- Challenge display -->
+                <div id="liveness-challenge" class="liveness-challenge hidden">
+                    <h3 id="challenge-title">Blink Twice</h3>
+                    <p id="challenge-description">Look at the camera and blink</p>
+                </div>
+                
+                <!-- Progress indicators -->
+                <div id="liveness-progress" class="liveness-progress hidden">
+                    <div class="step" data-step="1">1. Blink</div>
+                    <div class="step" data-step="2">2. Turn Right</div>
+                    <div class="step" data-step="3">3. Smile</div>
+                </div>
+                
+                <!-- Result -->
+                <div id="liveness-result" class="liveness-result hidden"></div>
+                
+                <div class="controls">
+                    <button id="start-liveness-btn" class="btn btn-primary">
+                        <span class="btn-icon">✓</span>
+                        Start Liveness Check
+                    </button>
                 </div>
             </div>
         </div>
