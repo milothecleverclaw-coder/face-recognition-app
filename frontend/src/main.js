@@ -281,6 +281,8 @@ function getEyeAspectRatio(landmarks, eyeIndices) {
 }
 
 // Check if person is blinking
+let currentEAR = 0; // For debug display
+
 function detectBlink(landmarks) {
   // Left eye: landmarks 36-41
   const leftEye = [36, 37, 38, 39, 40, 41];
@@ -291,7 +293,9 @@ function detectBlink(landmarks) {
   const rightEAR = getEyeAspectRatio(landmarks, rightEye);
   const avgEAR = (leftEAR + rightEAR) / 2;
   
-  const BLINK_THRESHOLD = 0.2;
+  currentEAR = avgEAR; // Store for display
+  
+  const BLINK_THRESHOLD = 0.28; // Increased for easier detection
   
   // Detect blink transition (open -> closed -> open)
   if (lastEAR > BLINK_THRESHOLD && avgEAR <= BLINK_THRESHOLD) {
@@ -460,6 +464,9 @@ function checkChallenge(landmarks) {
           success = true;
         }
       }
+      // Show EAR value and blink count for debugging
+      const descEl = document.getElementById('challenge-description');
+      descEl.textContent = `${challenge.description} (Blinks: ${blinkCount}/2, EAR: ${currentEAR.toFixed(2)})`;
       break;
       
     case 'turn':
