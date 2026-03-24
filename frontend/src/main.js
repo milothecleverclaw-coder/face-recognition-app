@@ -337,28 +337,42 @@ function detectHeadTurn(landmarks, direction) {
 }
 
 // Detect smile
+let currentSmileScore = 0; // For debug display
+
 function detectSmile(landmarks) {
-  // Mouth landmarks
-  // Upper lip: 62-63
-  // Lower lip: 65-66
-  // Mouth corners: 48, 54
+  // Mouth landmarks for smile detection
+  // Mouth corners: 48 (left), 54 (right)
+  // Upper lip center: 51
+  // Lower lip center: 57
+  // Mouth center Y: average of 51 and 57
   
-  const upperLip = landmarks[62];
-  const lowerLip = landmarks[66];
   const leftCorner = landmarks[48];
   const rightCorner = landmarks[54];
+  const upperLipCenter = landmarks[51];
+  const lowerLipCenter = landmarks[57];
   
-  const mouthHeight = Math.sqrt(
-    Math.pow(upperLip.x - lowerLip.x, 2) + Math.pow(upperLip.y - lowerLip.y, 2)
-  );
+  // Mouth center Y position
+  const mouthCenterY = (upperLipCenter.y + lowerLipCenter.y) / 2;
+  
+  // When smiling, corners rise above mouth center (lower Y value)
+  // Calculate how much corners are raised relative to mouth width
   const mouthWidth = Math.sqrt(
     Math.pow(leftCorner.x - rightCorner.x, 2) + Math.pow(leftCorner.y - rightCorner.y, 2)
   );
   
-  const mouthAspectRatio = mouthHeight / mouthWidth;
+  // Positive value = corners are below center (neutral/frown)
+  // Negative value = corners are above center (smile)
+  const leftCornerRise = mouthCenterY - leftCorner.y;
+  const rightCornerRise = mouthCenterY - rightCorner.y;
+  const avgCornerRise = (leftCornerRise + rightCornerRise) / 2;
   
-  // Mouth aspect ratio > 0.35 indicates smiling
-  return mouthAspectRatio > 0.35;
+  // Normalize by mouth width
+  const smileScore = avgCornerRise / mouthWidth;
+  
+  currentSmileScore = smileScore;
+  
+  // Smile score > 0.05 indicates corners are raised (smiling)
+  return smileScore > 0.05;
 }
 
 // Shuffle array
@@ -479,6 +493,9 @@ function checkChallenge(landmarks) {
       if (detectSmile(landmarks)) {
         success = true;
       }
+      // Show smile score for debugging
+      const smileDescEl = document.getElementById('challenge-description');
+      smileDescEl.textContent = `${challenge.description} (Score: ${currentSmileScore.toFixed(3)}${currentSmileScore > 0.05 ? ' ✓' : ''})`;
       break;
   }
   
