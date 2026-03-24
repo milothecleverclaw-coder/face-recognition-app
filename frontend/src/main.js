@@ -282,6 +282,10 @@ function getEyeAspectRatio(landmarks, eyeIndices) {
 
 // Check if person is blinking
 let currentEAR = 0; // For debug display
+let framesWithClosedEyes = 0;
+const FRAMES_TO_CONFIRM_BLINK = 2; // Eyes must be closed for 2+ frames
+let lastBlinkTime = 0;
+const BLINK_COOLDOWN_MS = 300; // Minimum time between blinks
 
 function detectBlink(landmarks) {
   // Left eye: landmarks 36-41
@@ -295,16 +299,23 @@ function detectBlink(landmarks) {
   
   currentEAR = avgEAR; // Store for display
   
-  const BLINK_THRESHOLD = 0.28; // Increased for easier detection
+  const BLINK_THRESHOLD = 0.22; // Stricter threshold - must actually close eyes
+  const now = Date.now();
   
-  // Detect blink transition (open -> closed -> open)
-  if (lastEAR > BLINK_THRESHOLD && avgEAR <= BLINK_THRESHOLD) {
-    eyesWereClosed = true;
-  } else if (eyesWereClosed && avgEAR > BLINK_THRESHOLD) {
-    // Blink completed
-    eyesWereClosed = false;
-    lastEAR = avgEAR;
-    return true;
+  // Check if eyes are closed
+  if (avgEAR <= BLINK_THRESHOLD) {
+    framesWithClosedEyes++;
+  } else {
+    // Eyes opened - check if we had enough closed frames
+    if (framesWithClosedEyes >= FRAMES_TO_CONFIRM_BLINK) {
+      // Only count if enough time has passed since last blink
+      if (now - lastBlinkTime > BLINK_COOLDOWN_MS) {
+        framesWithClosedEyes = 0;
+        lastBlinkTime = now;
+        return true;
+      }
+    }
+    framesWithClosedEyes = 0;
   }
   
   lastEAR = avgEAR;
@@ -397,6 +408,8 @@ async function startLivenessCheck() {
   blinkCount = 0;
   lastEAR = 0;
   eyesWereClosed = false;
+  framesWithClosedEyes = 0;
+  lastBlinkTime = 0;
   
   // Generate random challenges
   const turnDirection = Math.random() > 0.5 ? 'left' : 'right';
@@ -454,6 +467,8 @@ function startNextChallenge() {
   // Reset challenge-specific state
   if (challenge.type === 'blink') {
     blinkCount = 0;
+    framesWithClosedEyes = 0;
+    lastBlinkTime = 0;
   }
   
   // Set timeout for challenge (5 seconds)
